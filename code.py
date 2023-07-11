@@ -1,8 +1,6 @@
 import usb.core
 import time
 import struct
-import usb_host
-import board
 
 import intellikeys_firmware
 
@@ -104,6 +102,7 @@ def hid_send_report(index, buffer, report_id = 0):
         report[1:] = buffer
     else:
         report = buffer
+    print(f"send report to {endpoint:02x}")
     device.write(endpoint, report)
 
 def post_command(command, data=0):
@@ -112,11 +111,25 @@ def post_command(command, data=0):
     buf[1] = data
     print("command", command, data)
     hid_send_report(0, buf)
-    print("sent")
-    device.read(0x82, buf, timeout=2)
+    device.read(0x81, buf, timeout=2)
     print("read", buf)
+    return 
 
-usb_host_port = usb_host.Port(board.D11, board.D12)
+def tone(msLength, vol=2):
+    buf = bytearray(8)
+    buf[0] = IK_CMD_TONE
+    buf[1] = 247
+    buf[2] = vol
+    buf[3] = msLength // 10
+    hid_send_report(0, buf)
+
+def led(index, value):
+    buf = bytearray(8)
+    buf[0] = IK_CMD_LED
+    buf[1] = index
+    buf[2] = 1 if value else 0
+    hid_send_report(0, buf)
+
 print('hello')
 device = None
 while True:
@@ -166,11 +179,28 @@ while True:
             get_descriptor_into(0x22, i, 0, mv[:l])
             print(bytes(mv[:l]), " + ")
 
+        device.detach_kernel_driver(0)
+        device.detach_kernel_driver(1)
+        device.detach_kernel_driver(2)
+
         post_command(IK_CMD_INIT, 0)
         post_command(IK_CMD_SCAN, 1)
         time.sleep(0.25)
         post_command(IK_CMD_ALL_SENSORS)
+        print("version")
         post_command(IK_CMD_GET_VERSION)
 
+        buf = bytearray(8)
+        sensors = [0] * 3
         while True:
-            pass
+            device.read(0x81, buf)
+            if buf[0] == 55:
+                sensors[buf[1]] = buf[2]
+                print(sensors)
+            elif buf[0] == 52:
+                tone(50)
+                led(1, True)
+            elif buf[0] == 53:
+                led(1, False)
+            print(buf)
+
